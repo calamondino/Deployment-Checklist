@@ -1,28 +1,38 @@
 import { NextResponse } from "next/server";
-import { DB, uid, Template } from "../_store";
+import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/session";
 
-// List alle templates
 export async function GET() {
-  return NextResponse.json({ templates: Array.from(DB.templates.values()) });
+  const session = await requireSession();
+  const templates = await prisma.template.findMany({
+    where: { teamId: session.user!.teamId },
+    orderBy: { createdAt: "desc" },
+    include: { tasks: { orderBy: { order: "asc" } } },
+  });
+  return NextResponse.json({ templates });
 }
 
-// Opprett ny template
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body?.name || !Array.isArray(body?.tasks)) {
-    return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+
+type Body = { name?: string; tasks?: string }; // tasks = "Build image, Tag, Deploy"
+
+export async function POST(req: NextRequest) {
+  const { name, tasks } = await req.json();
+  if (!name || !Array.isArray(tasks) || tasks.length === 0) {
+    return NextResponse.json({ error: "Missing name/tasks" }, { status: 400 });
   }
 
-  const t: Template = {
-    id: uid(),
-    name: String(body.name),
-    tasks: (body.tasks as string[]).map((title, i) => ({
-      id: uid(),
-      title: String(title),
-      order: i,
-    })),
-  };
+  const template = await prisma.template.create({
+    data: {
+      name: String(name).trim(),
+      tasks: {
+        create: tasks.map((title: string, i: number) => ({
+          title: String(title).trim(),
+          order: i + 1,
+        })),
+      },
+    },
+    include: { tasks: true },
+  });
 
-  DB.templates.set(t.id, t);
-  return NextResponse.json({ template: t });
+  return NextResponse.json({ template }, { status: 201 });
 }
