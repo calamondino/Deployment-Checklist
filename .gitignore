@@ -32,10 +32,32 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-
-# vercel
+# Vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# codegen (if any)
+/src/generated/prisma
+
+# --- Additions ---
+
+# Prisma: keep migrations tracked, but ignore local dev DBs
+/prisma/*.db
+/prisma/*.sqlite
+/prisma/*-journal
+/prisma/*.db-journal
+/prisma/*.sqlite-journal
+
+# Local testing artifacts
+cookies.txt
+
+# Editor/IDE folders
+.vscode/
+.idea/
+
+# Bun / Turbo (if present)
+bun.lockb
+.turbo/
