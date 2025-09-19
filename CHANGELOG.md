@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/calamondino/Deployment-Checklist/compare/deploy-checklists-0.2.0...deploy-checklists-0.3.0) (2025-09-19)
+
+
+### Features
+
+* **app:** user/team-registrering, case-insensitive oppslag, runs-by-… ([c580de6](https://github.com/calamondino/Deployment-Checklist/commit/c580de6fa4147a95ae8eeb820bd61ff23fd3412a))
+* **app:** user/team-registrering, case-insensitive oppslag, runs-by-team, editor-badge og template-aktivitetsbadge ([e21fbcf](https://github.com/calamondino/Deployment-Checklist/commit/e21fbcf15d3c6296f70697732341ab6a7f8fd650))
+
+
+### Bug Fixes
+
+* **api:** start run + finish run edge-caser ([e21fbcf](https://github.com/calamondino/Deployment-Checklist/commit/e21fbcf15d3c6296f70697732341ab6a7f8fd650))
+
 ## [0.2.0](https://github.com/calamondino/Deployment-Checklist/compare/deploy-checklists-0.1.0...deploy-checklists-0.2.0) (2025-09-17)
 
 
