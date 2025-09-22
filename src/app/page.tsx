@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useActorName } from "@/components/WhoAmI";
 import EditorBadge from "@/components/EditorBadge";

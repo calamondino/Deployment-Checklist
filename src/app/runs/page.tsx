@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useActorName } from "@/components/WhoAmI";
+import Link from "next/link";
+
 
 type RunLite = {
   id: string;
@@ -62,7 +64,7 @@ export default function RunsIndex() {
         </div>
       )}
 
-      <a href="/templates" className="text-sm underline opacity-80">← Tilbake til Templates</a>
+      <Link href="/templates" className="...">← Tilbake til Templates</Link>
     </main>
   );
 }

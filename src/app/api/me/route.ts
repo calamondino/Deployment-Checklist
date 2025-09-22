@@ -5,22 +5,38 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 export async function GET(req: NextRequest) {
-  const name = new URL(req.url).searchParams.get("name")?.trim() ?? "";
+  const name = new URL(req.url).searchParams.get("name")?.trim();
   if (!name) {
     return NextResponse.json({ error: "Missing name" }, { status: 400 });
   }
 
-  // Hent bare det vi trenger, og match case-insensitivt i JS
-  const select = {
+  // Smalt select for god ytelse og klar type
+  const baseSelect = {
     id: true,
     name: true,
     team: { select: { id: true, name: true } },
   } as const;
 
-  const candidates = await prisma.user.findMany({ select });
-  const user =
-    candidates.find((u) => (u.name ?? "").toLowerCase() === name.toLowerCase()) ??
-    null;
+  type UserLite = {
+    id: string;
+    name: string; // <- ikke-null
+    team: { id: string; name: string } | null;
+  };
+
+  // 1) Eksakt oppslag
+  let user = await prisma.user.findFirst({
+    where: { name },
+    select: baseSelect,
+  });
+
+  // 2) Fallback: manuell case-insensitiv match
+  if (!user) {
+    const candidates: UserLite[] = await prisma.user.findMany({ select: baseSelect });
+    user =
+      candidates.find(
+        (u) => (u.name ?? "").toLowerCase() === name.toLowerCase()
+      ) ?? null;
+  }
 
   if (!user) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

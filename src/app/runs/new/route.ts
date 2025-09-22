@@ -1,41 +1,45 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/session";
+// src/app/api/me/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
 
-export async function POST(req: Request) {
-  const session = await requireSession();
+const prisma = new PrismaClient();
 
-  const form = await req.formData();
-  const templateId = String(form.get("templateId") ?? "").trim();
-  if (!templateId) {
-    return NextResponse.json({ error: "templateId required" }, { status: 400 });
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const name = (url.searchParams.get("name") ?? "").trim();
+  if (!name) return NextResponse.json({ error: "Missing name" }, { status: 400 });
+
+  // Hva vi trenger ut
+  const baseSelect = {
+    id: true,
+    name: true,
+    team: { select: { id: true, name: true } },
+  } as const;
+
+  type UserLite = {
+    id: string;
+    name: string; // <- ikke-null
+    team: { id: string; name: string };
+  };
+
+  // 1) Prøv eksakt treff først (billigst)
+  let user: UserLite | null =
+    (await prisma.user.findFirst({
+      where: { name },
+      select: baseSelect,
+    })) as UserLite | null;
+
+  // 2) Fallback for case-insensitiv matching
+  if (!user) {
+    const candidates = (await prisma.user.findMany({
+      select: baseSelect,
+    })) as UserLite[];
+
+    user =
+      candidates.find((u) => u.name.toLowerCase() === name.toLowerCase()) ??
+      null;
   }
 
-  // Sjekk at templaten er i ditt team
-  const template = await prisma.template.findFirst({
-    where: { id: templateId, teamId: session.user!.teamId },
-    include: { tasks: { orderBy: { order: "asc" } } },
-  });
-  if (!template) {
-    return NextResponse.json({ error: "Template not found" }, { status: 404 });
-  }
-
-  // Opprett run + items
-  const run = await prisma.run.create({
-    data: {
-      teamId: session.user!.teamId,
-      templateId: template.id,
-      startedById: session.user!.userId,
-      status: "in_progress",
-      items: {
-        create: template.tasks.map((t) => ({
-          taskId: t.id,
-          title: t.title,
-        })),
-      },
-    },
-  });
-
-  // Redirect til visningssiden
-  return NextResponse.redirect(new URL(`/runs/${run.id}`, req.url));
+  if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ user }, { status: 200 });
 }
