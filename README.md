@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+![Build](https://github.com/calamondino/deployment-checklists/actions/workflows/ci.yml/badge.svg)
+![Release](https://img.shields.io/github/v/release/calamondino/deployment-checklists)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## Getting Started
+# Deployment Checklists ✅
 
-First, run the development server:
+Et Next.js-prosjekt for å lage og kjøre sjekklister.  
+Bygget for å lære fullstack-utvikling, CI/CD, og moderne dev-verktøy i praksis.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Funksjoner
+- Registrering og innlogging av brukere
+- Opprettelse av templates (sjekkliste-maler)
+- Kjøre “runs” basert på templates
+- Lagre status og progresjon for hvert run
+- API-er bygd med Next.js App Router
+- Prisma ORM med SQLite (enkelt å bytte database senere)
+- CI/CD med GitHub Actions + Release Please
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Teknologi-stack
+- [Next.js 15](https://nextjs.org/) – React-rammeverk med App Router
+- [Prisma](https://www.prisma.io/) – ORM for databasehåndtering
+- [SQLite](https://sqlite.org/) – enkel database for utvikling
+- [Tailwind CSS](https://tailwindcss.com/) – styling
+- [GitHub Actions](https://docs.github.com/en/actions) – CI/CD pipelines
+- [Release Please](https://github.com/googleapis/release-please) – automatisk versjonering og changelog
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🏗️ Kom i gang lokalt
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Klon repoet**
+   git clone git@github.com:calamondino/deployment-checklists.git
+   cd deployment-checklists
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+2. **Installer dependencies**
+   npm ci
 
-## Deploy on Vercel
+3. **Kjør Prisma**
+   npx prisma generate
+   npx prisma migrate dev -n init
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+4. **Start utviklingsserver**
+   npm run dev
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Åpne http://localhost:3000 i nettleseren.
