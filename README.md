@@ -1,6 +1,6 @@
-![Build](https://github.com/calamondino/deployment-checklists/actions/workflows/ci.yml/badge.svg)
-![Release](https://img.shields.io/github/v/release/calamondino/deployment-checklists)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+[![Build](https://github.com/calamondino/deployment-checklists/actions/workflows/ci.yml/badge.svg)](https://github.com/calamondino/deployment-checklists/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/calamondino/deployment-checklists?sort=semver)](https://github.com/calamondino/deployment-checklists/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 # Deployment Checklists ✅
 
