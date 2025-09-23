@@ -1,203 +1,191 @@
 // src/app/templates/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useActorName } from "@/components/WhoAmI";
 
 type TaskLite = { title: string };
-type Template = { id: string; name: string; tasks?: TaskLite[] };
+type ActiveRun = { id: string; done: number; total: number } | null;
+type Template = { id: string; name: string; tasks?: TaskLite[]; activeRun: ActiveRun };
 
-type RunLite = {
-  id: string;
-  status: "in_progress" | "done" | string;
-  templateId: string | null;
-  template?: { id: string; name: string } | null;
-  items: { checkedAt: string | null }[];
-};
 
-async function safeJson<T>(res: Response): Promise<T | null> {
-  const text = await res.text();
-  if (!text) return null;
+// legg øverst
+function getActorName(): string {
+  // prøv localStorage først
   try {
-    return JSON.parse(text) as T;
-  } catch {
-    return null;
-  }
+    const v = localStorage.getItem("actorName");
+    if (v && v.trim()) return v.trim();
+  } catch {/* noop */}
+
+  // fallback: cookie
+  const m = document.cookie.match(/(?:^|;\s*)actorName=([^;]+)/);
+  if (m?.[1]) return decodeURIComponent(m[1]).trim();
+  return "";
 }
+
+async function startRunForTemplate(templateId: string) {
+  const name = getActorName();
+  if (!name) {
+    alert("Skriv inn og lagre navnet ditt på forsiden først.");
+    location.assign("/"); // send brukeren til forsiden for å lagre
+    return;
+  }
+
+  const res = await fetch("/api/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ templateId, name }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    alert(`Kunne ikke starte run: ${t || res.statusText}`);
+    return;
+  }
+  const data = await res.json().catch(() => null);
+  const runId = data?.run?.id ?? data?.id;
+  if (!runId) {
+    alert("Uventet svar fra server – mangler run-id.");
+    return;
+  }
+  location.assign(`/runs/${encodeURIComponent(runId)}`);
+}
+
+
+
 
 export default function TemplatesPage() {
   const router = useRouter();
-  const { name: actorName } = useActorName();
-
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [runs, setRuns] = useState<RunLite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
 
-  // Hent templates (med fallback til /api/templates-all)
   useEffect(() => {
+    let alive = true;
     (async () => {
       setLoading(true);
-
-      let res = await fetch("/api/templates", { cache: "no-store" });
-      let data = await safeJson<{ templates: Template[] }>(res);
-
-      if (!res.ok || !data?.templates) {
-        res = await fetch("/api/templates-all", { cache: "no-store" });
-        data = await safeJson<{ templates: Template[] }>(res);
-      }
-
-      if (res.ok && data?.templates) setTemplates(data.templates);
+      const res = await fetch("/api/templates", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!alive) return;
+      setTemplates((data?.templates ?? []) as Template[]);
       setLoading(false);
     })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  // Poll aktive runs for brukerens team
-  useEffect(() => {
-    if (!actorName) return;
-    let cancelled = false;
-
-    const load = async () => {
-      const res = await fetch(
-        `/api/runs/by-team?name=${encodeURIComponent(actorName)}`,
-        { cache: "no-store" }
-      );
-      const data = await safeJson<{ runs: RunLite[] }>(res);
-      if (!cancelled && res.ok && data?.runs) setRuns(data.runs);
-    };
-
-    load();
-    const t = setInterval(load, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [actorName]);
-
-  // Map: templateId -> aktivt run (+ fremdrift)
-  const activeMap = useMemo(() => {
-    const m = new Map<string, { runId: string; done: number; total: number }>();
-    for (const r of runs) {
-      const tid = r.template?.id ?? r.templateId ?? "";
-      if (!tid) continue;
-      if (r.status === "in_progress") {
-        const total = r.items.length;
-        const done = r.items.filter((i) => i.checkedAt).length;
-        m.set(tid, { runId: r.id, done, total });
-      }
-    }
-    return m;
-  }, [runs]);
-
-  async function startRun(templateId: string) {
-    const startedBy = (actorName || "").trim() || "Anonymous";
-
-    const res = await fetch("/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ templateId, startedBy }),
-    });
-    const data = await safeJson<{ run?: { id: string } }>(res);
-
-    if (res.ok && data?.run?.id) {
-      router.push(`/runs/${data.run.id}`);
-    } else {
-      alert("Klarte ikke å starte run. Sjekk serverlogg.");
-    }
-  }
-
-  async function deleteTemplate(id: string, name: string) {
-    const ok = confirm(
-      `Slette template «${name}»?\n\n` +
-        `Dette fjerner også alle oppgaver (tasks) i malen.\n` +
-        `Hvis det finnes runs basert på malen må de avsluttes/slettes først.`
-    );
+  async function onDeleteTemplate(t: Template) {
+    const ok = confirm(`Slette malen «${t.name}»?`);
     if (!ok) return;
 
-    // Viktig: app-route ligger på /templates/[id], ikke /api/templates/[id]
-    const res = await fetch(`/templates/${encodeURIComponent(id)}`, {
+    let res = await fetch(`/api/templates?id=${encodeURIComponent(t.id)}`, {
       method: "DELETE",
     });
-    const data = await safeJson<{ ok?: boolean; error?: string }>(res);
 
-    if (!res.ok || !data?.ok) {
-      alert(data?.error ?? "Kunne ikke slette template.");
+    if (res.status === 409) {
+      const forceOk = confirm(
+        `Det finnes runs for denne malen.\n\nSlette ALT (runs + items + oppgaver + mal) likevel?\nDette kan ikke angres.`
+      );
+      if (!forceOk) return;
+
+      res = await fetch(
+        `/api/templates?id=${encodeURIComponent(t.id)}&force=1`,
+        { method: "DELETE" }
+      );
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      alert(`Kunne ikke slette: ${body || res.statusText}`);
       return;
     }
-    setTemplates((prev) => (prev ?? []).filter((t) => t.id !== id));
+
+    setTemplates((prev) => prev.filter((x) => x.id !== t.id));
+    startTransition(() => router.refresh());
   }
 
-  if (loading) return <div className="p-8 text-zinc-300">Laster…</div>;
+  if (loading) {
+    return (
+      <main className="min-h-dvh bg-black text-white p-6">
+        <h1 className="text-3xl font-bold mb-4">Templates</h1>
+        <p>Laster…</p>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-dvh bg-black text-white p-8 max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Templates</h1>
+    <main className="min-h-dvh bg-black text-white p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-3xl font-bold">Templates</h1>
         <button
-          className="px-3 py-1 rounded border border-white/30 hover:bg-white/10"
-          onClick={() => router.push("/")}
+          onClick={() => location.assign("/")}
+          className="rounded border border-white/30 hover:bg-white/10 px-3 py-1"
         >
           Forside
         </button>
       </div>
 
-      {templates.length === 0 && (
-        <div className="text-sm text-white/60">
-          Ingen templates enda. Legg inn via seed eller admin-side.
-        </div>
-      )}
+      <div className="space-y-4 max-w-2xl">
+        {templates.map((t) => {
+          const subt =
+            t.tasks?.map((x) => x.title).join(", ") || "Ingen oppgaver definert";
+          const hasActive = !!t.activeRun;
+          const progress =
+            hasActive && t.activeRun
+              ? `${t.activeRun.done}/${t.activeRun.total} fullført`
+              : null;
 
-      {templates.map((t) => {
-        const info = activeMap.get(t.id);
-        const tasksLine = t.tasks?.length
-          ? t.tasks.map((x) => x.title).join(", ")
-          : "—";
-
-        return (
-          <div
-            key={t.id}
-            className="border border-white/10 rounded-lg p-4 flex items-center justify-between"
-          >
-            <div className="pr-4">
-              <div className="font-semibold flex items-center gap-2">
-                {t.name}
-                {info && (
-                  <span className="inline-flex items-center rounded-full bg-emerald-600/20 text-emerald-300 text-xs px-2 py-0.5">
-                    Aktiv: {info.done}/{info.total} fullført
-                  </span>
-                )}
+          return (
+            <section
+              key={t.id}
+              className="border border-white/10 rounded-lg p-4 flex items-center justify-between"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-semibold">{t.name}</h2>
+                  {hasActive && progress && (
+                    <span className="text-xs rounded-full bg-emerald-700/20 border border-emerald-500/40 px-2 py-0.5">
+                      Aktiv: {progress}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-white/60">{subt}</p>
               </div>
-              <div className="text-sm text-white/60">{tasksLine}</div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              {info ? (
-                <button
-                  className="px-3 py-1 rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10"
-                  onClick={() => router.push(`/runs/${info.runId}`)}
-                >
-                  Fortsett
-                </button>
-              ) : (
-                <button
-                  className="px-3 py-1 rounded border border-white/30 hover:bg-white/10"
-                  onClick={() => startRun(t.id)}
-                >
-                  Start run
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {!hasActive && (
+  <button
+    onClick={() => startRunForTemplate(t.id)}
+    className="rounded bg-white text-black px-3 py-1"
+  >
+    Start run
+  </button>
+)}
 
-              <button
-                className="px-2 py-1 rounded border border-red-500/60 text-red-300 hover:bg-red-500/10 text-sm"
-                onClick={() => deleteTemplate(t.id, t.name)}
-                title="Slett template"
-              >
-                Slett
-              </button>
-            </div>
-          </div>
-        );
-      })}
+                {hasActive && t.activeRun && (
+                  <button
+                    onClick={() =>
+                      location.assign(`/runs/${encodeURIComponent(t.activeRun!.id)}`)
+                    }
+                    className="rounded border border-emerald-600 text-emerald-400 px-3 py-1"
+                  >
+                    Fortsett
+                  </button>
+                )}
+
+                <button
+                  onClick={() => onDeleteTemplate(t)}
+                  disabled={isPending}
+                  className="rounded border border-red-600 text-red-400 px-3 py-1"
+                  title="Slett malen"
+                >
+                  Slett
+                </button>
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </main>
   );
 }
