@@ -1,19 +1,48 @@
 name: ci
+
 on:
   pull_request:
+    branches: [ main ]
   push:
-    branches: [main]
+    branches: [ main ]
+  # Kjør også når release-please åpner/synker PR-er
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   node-ci:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 22.x
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm prisma generate
-      - run: npm run lint --if-present
-      - run: npm run build
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      # (Valgfritt) Generer Prisma e.l. hvis du bruker det
+      # - name: Prisma generate
+      #   run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        env:
+          # Sett nødvendige build-variabler her hvis appen krever dem
+          # NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          # NODE_OPTIONS: --max_old_space_size=4096
+          CI: true
+        run: npm run build
