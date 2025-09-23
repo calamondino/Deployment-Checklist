@@ -1,60 +1,57 @@
 // src/app/api/runs/by-team/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// Lite type som matcher select'en vår
-type UserLite = {
-  id: string;
-  name: string | null;
-  team: { id: string; name: string };
-};
+// Common selects
+const runSelect = {
+  id: true,
+  status: true,
+  templateId: true,
+  template: { select: { id: true, name: true } },
+  items: { select: { id: true, checkedAt: true } },
+} as const;
+
+const userSelect = {
+  id: true,
+  name: true, // non-nullable in schema
+  team: { select: { id: true, name: true } }, // non-nullable relation
+} as const;
+
+type UserLite = Prisma.UserGetPayload<{ select: typeof userSelect }>;
 
 export async function GET(req: NextRequest) {
-  const name = new URL(req.url).searchParams.get("name")?.trim() ?? "";
-  if (!name) return NextResponse.json({ runs: [] }, { status: 200 });
+  const url = new URL(req.url);
+  const name = (url.searchParams.get("name") ?? "").trim();
+  const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") ?? "40") || 40));
 
-  // Finn bruker (eksakt navn først, så case-insensitiv fallback)
-  const baseSelect = {
-    id: true,
-    name: true,
-    team: { select: { id: true, name: true } },
-  } as const;
+  if (!name) {
+    return NextResponse.json({ runs: [] }, { status: 200 });
+  }
 
-  let user =
-    (await prisma.user.findFirst({
-      where: { name },
-      select: baseSelect,
-    })) ?? null;
+  // 1) Exact match first
+  type UserRow = Prisma.UserGetPayload<{ select: typeof userSelect }>;
+  let user: UserRow | null =
+  (await prisma.user.findFirst({ where: { name }, select: userSelect })) ?? null;
 
+
+  // 2) Fallback: case-insensitive match in JS
   if (!user) {
-    const candidates: UserLite[] = await prisma.user.findMany({
-      select: baseSelect,
-    });
-    const hit = candidates.find(
-      (u: UserLite) => (u.name ?? "").toLowerCase() === name.toLowerCase(),
-    );
+    const candidates: UserLite[] = await prisma.user.findMany({ select: userSelect });
+    const hit = candidates.find((u) => u.name.toLowerCase() === name.toLowerCase());
     user = hit ?? null;
   }
 
   if (!user?.team?.id) {
-    // Ingen team => ingen runs
     return NextResponse.json({ runs: [] }, { status: 200 });
   }
 
-  // Hent siste runs for teamet – sorter på startedAt (ikke createdAt)
   const runs = await prisma.run.findMany({
     where: { teamId: user.team.id },
-    orderBy: { startedAt: "desc" }, // <-- den vi fiksa tidligere
-    take: 40,
-    select: {
-      id: true,
-      status: true,
-      templateId: true,
-      template: { select: { id: true, name: true } },
-      items: { select: { checkedAt: true } },
-    },
+    orderBy: { startedAt: "desc" },
+    take: limit,
+    select: runSelect,
   });
 
   return NextResponse.json({ runs }, { status: 200 });

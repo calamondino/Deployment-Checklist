@@ -4,100 +4,93 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-type Body = { name?: string; teamName?: string };
+/* utils */
+const ciEqual = (a?: string | null, b?: string | null) =>
+  (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
 
-type TeamLite = { id: string; name: string };
-type UserLite = {
+/* common selects (freeze shapes so we can type from them) */
+const teamSelect = {
+  id: true,
+  name: true,
+} as const;
+
+const userSelect = {
+  id: true,
+  name: true,        // in schema: non-null
+  teamId: true,
+  team: { select: teamSelect },
+} as const;
+
+/* row types matching the selects above */
+type TeamRow = { id: string; name: string };
+type UserRow = {
   id: string;
-  name: string | null;
+  name: string;      // non-null here to match schema
   teamId: string;
-  team: { id: string; name: string } | null;
+  team: TeamRow;
 };
 
 export async function POST(req: NextRequest) {
-  const { name, teamName }: Body = await req.json();
+  const body = (await req.json().catch(() => null)) as
+    | { name?: string; teamName?: string }
+    | null;
 
-  const personName = (name ?? "").trim();
-  const teamLabel = (teamName ?? "").trim() || "Default";
-
+  const personName = (body?.name ?? "").trim();
+  const teamLabel = (body?.teamName ?? "").trim() || "Default";
   if (!personName) {
     return NextResponse.json({ error: "Missing name" }, { status: 400 });
   }
 
-  // Finn/lag team (eksakt først, så case-insensitiv fallback)
-  let team = await prisma.team.findFirst({
-    where: { name: teamLabel },
-    select: { id: true, name: true },
-  });
+  /* 1) Ensure team exists (exact, fallback CI, else create) */
+  let team: TeamRow | null =
+    (await prisma.team.findFirst({
+      where: { name: teamLabel },
+      select: teamSelect,
+    })) ?? null;
 
   if (!team) {
-    const allTeams: TeamLite[] = await prisma.team.findMany({
-      select: { id: true, name: true },
-    });
-    team =
-      allTeams.find(
-        (t: TeamLite) => (t.name ?? "").toLowerCase() === teamLabel.toLowerCase()
-      ) ?? null;
+    const allTeams: TeamRow[] = await prisma.team.findMany({ select: teamSelect });
+    team = allTeams.find((t) => ciEqual(t.name, teamLabel)) ?? null;
   }
 
   if (!team) {
     team = await prisma.team.create({
       data: { name: teamLabel },
-      select: { id: true, name: true },
+      select: teamSelect,
     });
   }
 
-  // Finn eksisterende bruker: eksakt navn først
-  let user = await prisma.user.findFirst({
-    where: { name: personName },
-    select: {
-      id: true,
-      name: true,
-      teamId: true,
-      team: { select: { id: true, name: true } },
-    },
-  });
+  /* 2) Find existing user (exact name first, same shape as we return) */
+  let user: UserRow | null =
+    (await prisma.user.findFirst({
+      where: { name: personName },
+      select: userSelect,
+    })) ?? null;
 
-  // Case-insensitiv fallback uten 'any'
+  /* 3) Case-insensitive fallback (no 'mode' needed) */
   if (!user) {
-    const candidates: UserLite[] = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        teamId: true,
-        team: { select: { id: true, name: true } },
-      },
+    const candidates: UserRow[] = await prisma.user.findMany({
+      // you can scope to team if you prefer:
+      // where: { teamId: team.id },
+      select: userSelect,
     });
-    user =
-      candidates.find(
-        (u: UserLite) => (u.name ?? "").toLowerCase() === personName.toLowerCase()
-      ) ?? null;
+    user = candidates.find((u) => ciEqual(u.name, personName)) ?? null;
   }
 
-  // Opprett ny eller oppdater team-tilknytning
+  /* 4) Create or update team link */
   if (!user) {
     const placeholderEmail = `${personName}.${Date.now()}@localhost`;
     user = await prisma.user.create({
       data: { name: personName, email: placeholderEmail, teamId: team.id },
-      select: {
-        id: true,
-        name: true,
-        teamId: true,
-        team: { select: { id: true, name: true } },
-      },
+      select: userSelect,
     });
   } else if (user.teamId !== team.id) {
     user = await prisma.user.update({
       where: { id: user.id },
       data: { teamId: team.id },
-      select: {
-        id: true,
-        name: true,
-        teamId: true,
-        team: { select: { id: true, name: true } },
-      },
+      select: userSelect,
     });
   }
 
-  return NextResponse.json({ user, created: true }, { status: 201 });
+  return NextResponse.json({ user }, { status: 201 });
 }

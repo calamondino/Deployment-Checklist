@@ -34,7 +34,7 @@ export default function TemplatesPage() {
   const [runs, setRuns] = useState<RunLite[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load templates once
+  // Hent templates (med fallback til /api/templates-all)
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -52,7 +52,7 @@ export default function TemplatesPage() {
     })();
   }, []);
 
-  // Poll runs for the actor's team
+  // Poll aktive runs for brukerens team
   useEffect(() => {
     if (!actorName) return;
     let cancelled = false;
@@ -74,7 +74,7 @@ export default function TemplatesPage() {
     };
   }, [actorName]);
 
-  // Build map: templateId -> active run (with progress)
+  // Map: templateId -> aktivt run (+ fremdrift)
   const activeMap = useMemo(() => {
     const m = new Map<string, { runId: string; done: number; total: number }>();
     for (const r of runs) {
@@ -106,6 +106,27 @@ export default function TemplatesPage() {
     }
   }
 
+  async function deleteTemplate(id: string, name: string) {
+    const ok = confirm(
+      `Slette template «${name}»?\n\n` +
+        `Dette fjerner også alle oppgaver (tasks) i malen.\n` +
+        `Hvis det finnes runs basert på malen må de avsluttes/slettes først.`
+    );
+    if (!ok) return;
+
+    // Viktig: app-route ligger på /templates/[id], ikke /api/templates/[id]
+    const res = await fetch(`/templates/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    const data = await safeJson<{ ok?: boolean; error?: string }>(res);
+
+    if (!res.ok || !data?.ok) {
+      alert(data?.error ?? "Kunne ikke slette template.");
+      return;
+    }
+    setTemplates((prev) => (prev ?? []).filter((t) => t.id !== id));
+  }
+
   if (loading) return <div className="p-8 text-zinc-300">Laster…</div>;
 
   return (
@@ -122,7 +143,7 @@ export default function TemplatesPage() {
 
       {templates.length === 0 && (
         <div className="text-sm text-white/60">
-          Ingen templates enda. Lag ett via seed eller egen admin-side.
+          Ingen templates enda. Legg inn via seed eller admin-side.
         </div>
       )}
 
@@ -149,21 +170,31 @@ export default function TemplatesPage() {
               <div className="text-sm text-white/60">{tasksLine}</div>
             </div>
 
-            {info ? (
+            <div className="flex items-center gap-2">
+              {info ? (
+                <button
+                  className="px-3 py-1 rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10"
+                  onClick={() => router.push(`/runs/${info.runId}`)}
+                >
+                  Fortsett
+                </button>
+              ) : (
+                <button
+                  className="px-3 py-1 rounded border border-white/30 hover:bg-white/10"
+                  onClick={() => startRun(t.id)}
+                >
+                  Start run
+                </button>
+              )}
+
               <button
-                className="px-3 py-1 rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10"
-                onClick={() => router.push(`/runs/${info.runId}`)}
+                className="px-2 py-1 rounded border border-red-500/60 text-red-300 hover:bg-red-500/10 text-sm"
+                onClick={() => deleteTemplate(t.id, t.name)}
+                title="Slett template"
               >
-                Fortsett
+                Slett
               </button>
-            ) : (
-              <button
-                className="px-3 py-1 rounded border border-white/30 hover:bg-white/10"
-                onClick={() => startRun(t.id)}
-              >
-                Start run
-              </button>
-            )}
+            </div>
           </div>
         );
       })}
