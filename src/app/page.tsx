@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useActorName } from "@/components/WhoAmI";
 import EditorBadge from "@/components/EditorBadge";
@@ -11,21 +11,20 @@ type MeResponse =
   | { error: string };
 
 export default function HomePage() {
-  // Les navn fra cookie via hooket
-  const { name: actorNameRaw } = useActorName();
-  const [name, setName] = useState<string>(actorNameRaw ?? "");
+  // Hooken gir deg kun lest navn (ingen save())
+  const { name: storedName } = useActorName();
+
+  // Start ALLTID blankt i UI
+  const [name, setName] = useState<string>("");
 
   // Tilgangsstatus
   const [team, setTeam] = useState<TeamInfo | null>(null);
   const hasAccess = !!team;
 
-  // Hold input synk med det som ev. endres av andre komponenter
-  useEffect(() => {
-    if ((actorNameRaw ?? "") !== name) {
-      setName(actorNameRaw ?? "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actorNameRaw]);
+  // Styr feilmelding kun etter at bruker har forsøkt å sjekke
+  const [checked, setChecked] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
 
   function saveName() {
     const v = name.trim();
@@ -38,27 +37,28 @@ export default function HomePage() {
     const oneYear = 60 * 60 * 24 * 365;
     document.cookie = `actorName=${encodeURIComponent(v)}; Path=/; Max-Age=${oneYear}`;
 
-    // 2) “Broadcast” til andre komponenter i appen
+    // 2) localStorage + events (så WhoAmI-hooket og andre faner oppdateres)
     try {
       localStorage.setItem("actorName", v);
-      // StorageEvent simuleres i samme fane for enkel live-oppdatering
-      window.dispatchEvent(
-        new StorageEvent("storage", { key: "actorName", newValue: v })
-      );
-    } catch {
-      /* no-op */
-    }
+      // Oppdater aktive lyttere i samme fane og andre faner
+      window.dispatchEvent(new StorageEvent("storage", { key: "actorName", newValue: v }));
+      window.dispatchEvent(new Event("actorNameChanged"));
+    } catch { /* no-op */ }
+
+    setJustSaved(true);
   }
 
   async function checkAccess() {
     setTeam(null);
+    setChecked(true);
+
     const q = encodeURIComponent(name.trim());
-    if (!q) {
-      alert("Skriv inn navnet ditt før du sjekker tilgang.");
-      return;
-    }
+    if (!q) return; // knappen er disabled hvis tomt navn
+
+    setLoading(true);
     const res = await fetch(`/api/me?name=${q}`, { cache: "no-store" });
     const data = (await res.json().catch(() => null)) as MeResponse | null;
+    setLoading(false);
 
     if (res.ok && data && "user" in data) {
       setTeam(data.user.team ?? null);
@@ -76,23 +76,40 @@ export default function HomePage() {
           <span className="text-white/80">Jeg heter:</span>
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              // Nullstill tidligere “sjekket”-status når man skriver på nytt
+              setChecked(false);
+              setTeam(null);
+              setJustSaved(false);
+            }}
+            placeholder="Skriv navnet ditt…"
             className="w-64 rounded border border-white/20 bg-transparent px-3 py-1"
           />
           <button
             onClick={saveName}
             className="rounded border border-white/30 hover:bg-white/10 px-3 py-1"
+            disabled={!name.trim()}
+            title={!name.trim() ? "Skriv inn et navn først" : "Lagre navnet lokalt"}
           >
             Lagre
           </button>
         </div>
 
+        {(storedName || justSaved) && (
+          <p className="text-xs text-white/40">
+            Lokalt lagret navn: {justSaved ? name.trim() : storedName}
+          </p>
+        )}
+
         <div className="flex items-center justify-center gap-3">
           <button
             onClick={checkAccess}
-            className="rounded border border-white/30 hover:bg-white/10 px-3 py-1"
+            className="rounded border border-white/30 hover:bg-white/10 px-3 py-1 disabled:opacity-40"
+            disabled={!name.trim() || loading}
+            title={!name.trim() ? "Skriv inn navnet ditt" : "Sjekk om du har tilgang"}
           >
-            Sjekk tilgang
+            {loading ? "Sjekker…" : "Sjekk tilgang"}
           </button>
 
           <Link
@@ -107,8 +124,8 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* Tilgangsresultat */}
-        {team ? (
+        {/* Tilgangsresultat — vis ERROR KUN etter forsøk */}
+        {checked && (team ? (
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-700/20 px-3 py-1 text-sm">
             <span>Tilgang OK</span>
             <span className="opacity-60">•</span>
@@ -124,9 +141,8 @@ export default function HomePage() {
               brukeren med team på denne siden.
             </span>
           </div>
-        )}
+        ))}
 
-        {/* Registreringsskjema (enkelt) */}
         <RegisterBox currentName={name} onRegistered={checkAccess} />
       </div>
 
