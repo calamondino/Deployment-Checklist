@@ -1,97 +1,167 @@
-// src/app/api/templates/route.ts
-import { NextResponse } from "next/server";
+// src/app/api/runs/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-/**
- * GET: returnerer templates med oppgavetitler + (ev.) aktivt run og siste fullførte
- * - activeRun: siste run hvor status != "done" (viser done/total)
- * - lastDone: siste run hvor status == "done" (viser hvem og når)
- */
-export async function GET() {
-  const raw = await prisma.template.findMany({
+const ciEqual = (a?: string | null, b?: string | null) =>
+  (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
+const isObject = (x: unknown): x is Record<string, unknown> =>
+  typeof x === "object" && x !== null;
+
+const runSelect = {
+  id: true,
+  status: true,
+  templateId: true,
+  template: { select: { id: true, name: true } },
+  items: {
     select: {
       id: true,
-      name: true,
-      tasks: { select: { title: true } },
-      // hent de 5 siste run'ene og plukk ut aktiv/sist fullførte i JS
-      runs: {
-        orderBy: { id: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          status: true,
-          finishedAt: true,
-          startedBy: { select: { name: true } },
-          items: { select: { checkedAt: true } }, // progress
-        },
-      },
+      taskId: true,
+      title: true,
+      checkedAt: true,
+      checkedById: true,
     },
-  });
+  },
+} as const;
 
-  const templates = raw.map((t) => {
-    const latestActive = t.runs.find((r) => r.status !== "done") ?? null;
-    const latestDone = t.runs.find((r) => r.status === "done") ?? null;
-
-    let activeRun: { id: string; done: number; total: number } | null = null;
-    if (latestActive) {
-      const total = latestActive.items.length;
-      const done = latestActive.items.filter((i) => i.checkedAt).length;
-      activeRun = { id: latestActive.id, done, total };
-    }
-
-    const lastDone = latestDone
-      ? {
-          by: latestDone.startedBy?.name ?? "Ukjent",
-          at: latestDone.finishedAt ? latestDone.finishedAt.toISOString() : null,
-        }
-      : null;
-
-    return {
-      id: t.id,
-      name: t.name,
-      tasks: t.tasks,
-      activeRun,
-      lastDone,
-    };
-  });
-
-  return NextResponse.json({ templates }, { status: 200 });
+// (hjelp hvis email er required i schema)
+function tempEmail(name: string, teamId: string) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
+  const uniq = Date.now().toString(36).slice(-4);
+  return `${slug || "user"}.${teamId}.${uniq}@local`;
 }
 
-/**
- * DELETE: ?id=<templateId>[&force=1]
- * - uten force: 409 hvis det finnes runs
- * - med force: cascadeslett runItems -> runs -> tasks -> template (transaksjon)
- */
-export async function DELETE(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  const force = searchParams.get("force") === "1";
+/* GET /api/runs?id=... | /api/runs?byTeam=... */
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id")?.trim();
+  const byTeam = url.searchParams.get("byTeam")?.trim();
+  const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") ?? "40") || 40));
 
-  if (!id) return NextResponse.json({ error: "Missing template id" }, { status: 400 });
+  if (id) {
+    const run = await prisma.run.findUnique({ where: { id }, select: runSelect });
+    if (!run) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ run }, { status: 200 });
+  }
 
-  const runCount = await prisma.run.count({ where: { templateId: id } });
+  if (byTeam) {
+    const teams = await prisma.team.findMany({ select: { id: true, name: true } });
+    const team = teams.find((t) => ciEqual(t.name, byTeam)) ?? null;
+    if (!team) return NextResponse.json({ runs: [] }, { status: 200 });
 
-  if (runCount > 0 && !force) {
+    const runs = await prisma.run.findMany({
+      where: { teamId: team.id },
+      orderBy: { id: "desc" },
+      take: limit,
+      select: runSelect,
+    });
+    return NextResponse.json({ runs }, { status: 200 });
+  }
+
+  return NextResponse.json({ runs: [] }, { status: 200 });
+}
+
+/* POST /api/runs  Body: { templateId: string; name?: string; startedBy?: string } */
+export async function POST(req: NextRequest) {
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const templateId = String(body?.templateId ?? "").trim();
+
+  // aksepter både "name" og "startedBy" + fallback til cookie "actorName"
+  let startedBy = String((body?.name ?? body?.startedBy ?? "") as string).trim();
+  if (!startedBy) {
+    const cookie = req.headers.get("cookie") ?? "";
+    const m = cookie.match(/(?:^|;\s*)actorName=([^;]+)/);
+    if (m?.[1]) startedBy = decodeURIComponent(m[1]).trim();
+  }
+
+  if (!templateId || !startedBy) {
     return NextResponse.json(
-      { error: "Kan ikke slette: det finnes runs for denne malen." },
-      { status: 409 }
+      { error: !templateId ? "Missing templateId" : "Missing name" },
+      { status: 400 }
     );
   }
 
-  if (runCount > 0 && force) {
-    await prisma.$transaction(async (tx) => {
-      await tx.runItem.deleteMany({ where: { run: { templateId: id } } });
-      await tx.run.deleteMany({ where: { templateId: id } });
-      await tx.task.deleteMany({ where: { templateId: id } });
-      await tx.template.delete({ where: { id } });
+  // template + tasks
+  const template = await prisma.template.findUnique({
+    where: { id: templateId },
+    select: {
+      id: true,
+      teamId: true,
+      tasks: { select: { id: true, title: true, order: true } },
+    },
+  });
+  if (!template) return NextResponse.json({ error: "Template not found" }, { status: 404 });
+
+  // finn/lag bruker i teamet
+  const candidates = await prisma.user.findMany({
+    where: { teamId: template.teamId },
+    select: { id: true, name: true },
+  });
+  let user = candidates.find((u) => ciEqual(u.name, startedBy)) ?? null;
+  if (!user) {
+    user = await prisma.user.create({
+      data: { name: startedBy, teamId: template.teamId, email: tempEmail(startedBy, template.teamId) },
+      select: { id: true, name: true },
     });
-    return NextResponse.json({ ok: true, cascaded: true }, { status: 200 });
   }
 
-  await prisma.task.deleteMany({ where: { templateId: id } });
-  await prisma.template.delete({ where: { id } });
-  return NextResponse.json({ ok: true }, { status: 200 });
+  // opprett run
+  const createdRun = await prisma.run.create({
+    data: { teamId: template.teamId, templateId: template.id, startedById: user.id, status: "in_progress" },
+    select: { id: true },
+  });
+
+  // lag items
+  const itemsData = (template.tasks ?? [])
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((t) => ({ runId: createdRun.id, taskId: t.id, title: t.title }));
+
+  if (itemsData.length) await prisma.runItem.createMany({ data: itemsData });
+
+  const fullRun = await prisma.run.findUnique({ where: { id: createdRun.id }, select: runSelect });
+  return NextResponse.json({ run: fullRun }, { status: 201 });
+}
+
+/* PATCH /api/runs   finish eller toggle */
+type FinishBody = { runId: string; action: "finish" };
+type ToggleBody = { runId: string; taskId: string; done: boolean; checkedBy?: string };
+const isFinishBody = (x: unknown): x is FinishBody =>
+  isObject(x) && x.action === "finish" && typeof x.runId === "string";
+const isToggleBody = (x: unknown): x is ToggleBody =>
+  isObject(x) && typeof x.runId === "string" && typeof x.taskId === "string" && typeof x.done === "boolean";
+
+export async function PATCH(req: NextRequest) {
+  const raw = (await req.json().catch(() => null)) as unknown;
+
+  if (isFinishBody(raw)) {
+    const runId = raw.runId.trim();
+    if (!runId) return NextResponse.json({ error: "Missing runId" }, { status: 400 });
+    await prisma.run.update({ where: { id: runId }, data: { status: "done", finishedAt: new Date() } });
+    const run = await prisma.run.findUnique({ where: { id: runId }, select: runSelect });
+    return NextResponse.json({ run }, { status: 200 });
+  }
+
+  if (isToggleBody(raw)) {
+    const runId = raw.runId.trim();
+    const taskId = raw.taskId.trim();
+    const done = raw.done;
+    const checkedBy = (raw.checkedBy ?? "").trim();
+
+    if (!runId || !taskId) return NextResponse.json({ error: "Missing runId or taskId" }, { status: 400 });
+
+    const item = await prisma.runItem.findFirst({ where: { runId, taskId }, select: { id: true } });
+    if (!item) return NextResponse.json({ error: "Item not found" }, { status: 404 });
+
+    await prisma.runItem.update({
+      where: { id: item.id },
+      data: done ? { checkedAt: new Date(), checkedById: checkedBy || "Ukjent" } : { checkedAt: null, checkedById: null },
+    });
+
+    const run = await prisma.run.findUnique({ where: { id: runId }, select: runSelect });
+    return NextResponse.json({ run }, { status: 200 });
+  }
+
+  return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
 }
