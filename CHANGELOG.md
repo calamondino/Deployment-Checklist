@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0](https://github.com/calamondino/Deployment-Checklist/compare/deploy-checklists-0.3.0...deploy-checklists-1.0.0) (2025-09-24)
+
+
+### Features
+
+* klar for 1.0.0 ([5c619a3](https://github.com/calamondino/Deployment-Checklist/commit/5c619a3509bfb9f67f970a1c811b76af3f3f5cbe))
+* klar for 1.0.0 ([ae0246f](https://github.com/calamondino/Deployment-Checklist/commit/ae0246f99e4479e498a09d43f032666d092937ae))
+* **templates:** show active run/progress and last-done hint; start r… ([54f7b0e](https://github.com/calamondino/Deployment-Checklist/commit/54f7b0ef95c596bbdea0aba0909d45150af98a97))
+* **templates:** show active run/progress and last-done hint; start run via POST; safe cascade delete ([40044b3](https://github.com/calamondino/Deployment-Checklist/commit/40044b3be580aefc7256981dd25407cc83029534))
+
+
+### Bug Fixes
+
+* **home:** avoid red access error until name is set ([40044b3](https://github.com/calamondino/Deployment-Checklist/commit/40044b3be580aefc7256981dd25407cc83029534))
+* **home:** start blank name and hide error until checked ([4d8627a](https://github.com/calamondino/Deployment-Checklist/commit/4d8627a53d026247d9cbc7a6b6cbbbba41134da0))
+* **home:** start blank name and hide error until checked ([1ea402b](https://github.com/calamondino/Deployment-Checklist/commit/1ea402b81905cbc8044b15cfd0386876a5dab118))
+
 ## [0.3.0](https://github.com/calamondino/Deployment-Checklist/compare/deploy-checklists-0.2.0...deploy-checklists-0.3.0) (2025-09-23)
 
 
