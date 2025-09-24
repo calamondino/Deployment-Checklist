@@ -5,7 +5,6 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
-  # Kjør også når release-please åpner/synker PR-er
   workflow_dispatch:
 
 permissions:
@@ -25,13 +24,16 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Install (npm ci)
         run: npm ci
 
-      # (Valgfritt) Generer Prisma e.l. hvis du bruker det
-      # - name: Prisma generate
-      #   run: npx prisma generate
+      - name: Prisma generate (if schema exists)
+        run: |
+          if [ -f prisma/schema.prisma ]; then
+            npx prisma generate
+          fi
 
       - name: Lint
         run: npm run lint
@@ -41,8 +43,6 @@ jobs:
 
       - name: Build
         env:
-          # Sett nødvendige build-variabler her hvis appen krever dem
-          # NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
-          # NODE_OPTIONS: --max_old_space_size=4096
           CI: true
+          NEXT_TELEMETRY_DISABLED: 1
         run: npm run build
