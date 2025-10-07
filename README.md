@@ -48,3 +48,5 @@ Bygget for å lære fullstack-utvikling, CI/CD, og moderne dev-verktøy i praksi
    npm run dev
 
 Åpne http://localhost:3000 i nettleseren.
+
+tester commmit melding med closes isssues (#13)

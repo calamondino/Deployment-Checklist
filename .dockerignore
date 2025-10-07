@@ -1,0 +1,19 @@
+# dependencies
+node_modules
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+
+# next build artifacts
+.next/cache
+.next/types
+.vercel
+
+# misc
+.git
+.gitignore
+.DS_Store
+
+# prisma/dev ting
+prisma/dev.db*
+prisma/*.sqlite*
