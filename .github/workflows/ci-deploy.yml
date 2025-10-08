@@ -66,21 +66,28 @@ jobs:
           # her injiseres ev. *build-tid* envs fra riktig environment:
           NEXT_PUBLIC_API_BASE: ${{ secrets.NEXT_PUBLIC_API_BASE || '' }}
 
-      # --- Secrets sanity check uten å printe verdier ---
-      - name: Verify required secrets exist
+      - name: Verify required secrets (env-aware)
         shell: bash
         env:
+          GHA_ENV: ${{ needs.select-env.outputs.env }}
           APP_URL: ${{ secrets.APP_URL }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || '' }}
           API_KEY: ${{ secrets.API_KEY || '' }}
         run: |
-          for v in APP_URL DATABASE_URL; do
-            if [[ -z "${!v}" ]]; then
-              echo "::error title=Missing secret::Secret $v is not set in ${{ needs.select-env.outputs.env }}"
-              exit 1
-            fi
-          done
-          echo "Secrets OK for ${{ needs.select-env.outputs.env }}"
+          missing=0
+          # APP_URL kreves alltid (til miljø-URL i GitHub UI / deploy-skript)
+          if [[ -z "$APP_URL" ]]; then
+            echo "::error title=Missing secret::Secret APP_URL is not set in $GHA_ENV"
+            missing=1
+          fi
+
+          # DATABASE_URL er valgfri (SQLite i dev/prod). Vi bare informerer hvis prod mangler.
+          if [[ "$GHA_ENV" == "prod" && -z "$DATABASE_URL" ]]; then
+            echo "::notice title=No DATABASE_URL in prod::Using SQLite/embedded DB; set DATABASE_URL when moving to Postgres"
+          fi
+
+          exit $missing
+
 
       # --- (Valgfritt) Docker build & push til GHCR ---
       - name: Log in to GHCR
