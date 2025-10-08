@@ -1,14 +1,13 @@
 name: Deploy (dev/prod)
 
 on:
-  push:
-    branches: [ dev, main ]   # dev-branch deployer til dev, main til prod
   workflow_dispatch:
     inputs:
       environment:
         description: 'Override environment (dev|prod)'
         required: false
-        default: ''
+        default: 'dev'
+
 
 permissions:
   contents: read
