@@ -100,7 +100,7 @@ jobs:
       - name: Build & push image
         if: ${{ hashFiles('Dockerfile') != '' }}
         run: |
-          IMAGE=ghcr.io/${{ github.repository }}/deploy-checklists
+          IMAGE=ghcr.io/${{ github.repository }}/deploy-checklist
           SHA_TAG=${GITHUB_SHA::7}
           ENV_TAG=${{ needs.select-env.outputs.env }}
           docker build -t "$IMAGE:$SHA_TAG" -t "$IMAGE:$ENV_TAG" .
