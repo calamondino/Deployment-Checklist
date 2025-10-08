@@ -100,12 +100,14 @@ jobs:
       - name: Build & push image
         if: ${{ hashFiles('Dockerfile') != '' }}
         run: |
-          IMAGE=ghcr.io/${{ github.repository }}/deploy-checklist
+          REPO="${GITHUB_REPOSITORY,,}"   # gjør repo-navnet lowercase
+          IMAGE="ghcr.io/${REPO}/deploy-checklist"
           SHA_TAG=${GITHUB_SHA::7}
           ENV_TAG=${{ needs.select-env.outputs.env }}
           docker build -t "$IMAGE:$SHA_TAG" -t "$IMAGE:$ENV_TAG" .
           docker push "$IMAGE:$SHA_TAG"
           docker push "$IMAGE:$ENV_TAG"
+
 
       # --- Eksempel deploy-kommandoer: bytt til ditt mål ---
       - name: Deploy application
