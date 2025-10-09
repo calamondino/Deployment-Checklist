@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Hold GitHub Actions oppdatert (alltid relevant)
+  - package-ecosystem: "github-actions"
+    directory: "/"             # ser i .github/workflows
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["deps", "github-actions"]
+
+  # Hvis repoet har package.json (npm/Node)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    versioning-strategy: "auto"
+    open-pull-requests-limit: 10
+    labels: ["deps", "npm"]
