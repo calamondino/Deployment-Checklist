@@ -1,18 +1,74 @@
 version: 2
 updates:
-  # Hold GitHub Actions oppdatert (alltid relevant)
+  # ---------- GitHub Actions ----------
   - package-ecosystem: "github-actions"
-    directory: "/"             # ser i .github/workflows
+    directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
-    labels: ["deps", "github-actions"]
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    open-pull-requests-limit: 3
+    groups:
+      gha-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      gha-major:
+        patterns: ["*"]
+        update-types: ["major"]
 
-  # Hvis repoet har package.json (npm/Node)
+  # ---------- NPM (root) ----------
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
-    versioning-strategy: "auto"
-    open-pull-requests-limit: 10
-    labels: ["deps", "npm"]
+      day: "monday"
+      time: "06:30"
+      timezone: "Europe/Oslo"
+    # Holder lista liten
+    open-pull-requests-limit: 5
+    # Grei default – bump til neste semver som package.json tillater
+    versioning-strategy: auto
+    # Grupper oppdateringer så du får færre PR-er:
+    groups:
+      react-next:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "next"
+          - "@types/react"
+          - "@types/react-dom"
+      prisma-stack:
+        patterns:
+          - "prisma"
+          - "@prisma/*"
+      tailwind-stack:
+        patterns:
+          - "tailwindcss"
+          - "postcss"
+          - "autoprefixer"
+      types-ts:
+        patterns:
+          - "typescript"
+          - "@types/node"
+      dev-deps-misc:
+        dependency-type: "development"
+        patterns:
+          - "*" # alt annet som er devDependency
+      prod-minor-patch:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+        patterns:
+          - "*"
+      prod-major:
+        dependency-type: "production"
+        update-types: ["major"]
+        patterns:
+          - "*"
+    # Valgfritt: Ignorer "støypakker" du vet du ikke vil røre ofte
+    # ignore:
+    #   - dependency-name: "postcss"
+    #     update-types: ["version-update:semver-minor"]
+
+  # ---------- NPM i underkataloger (hvis monorepo) ----------
+  # Kopiér blokka over og endre directory om du har /apps/*, /packages/* osv.
