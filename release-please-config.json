@@ -1,4 +1,9 @@
 {
+  "bootstrap-sha": "",
+  "plugins": ["node-workspace"],
+  "release-type": "node",
+  "include-v-in-tag": true,
+  "changelog-path": "CHANGELOG.md",
   "packages": {
     ".": {
       "release-type": "node",
