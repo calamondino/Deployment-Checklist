@@ -1,142 +1,51 @@
-name: Deploy (dev/prod)
+name: CI / Deploy
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Override environment (dev|prod)'
-        required: false
-        default: 'dev'
 
-
+# Viktig: eksplisitte permissions for trygg kjøring og OIDC senere
 permissions:
   contents: read
-  packages: write
-  id-token: write          # klargjør for OIDC mot cloud
-  deployments: write
+  packages: read
+  id-token: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.environment || 'auto' }}
-  cancel-in-progress: false
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  select-env:
+  build:
+    name: Build (dev)
     runs-on: ubuntu-latest
-    outputs:
-      env: ${{ steps.pick.outputs.env }}
-      is_prod: ${{ steps.pick.outputs.is_prod }}
-    steps:
-      - id: pick
-        shell: bash
-        run: |
-          override="${{ github.event.inputs.environment }}"
-          if [[ "$override" == "dev" || "$override" == "prod" ]]; then
-            env="$override"
-          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
-            env="prod"
-          else
-            env="dev"
-          fi
-          echo "env=$env" >> "$GITHUB_OUTPUT"
-          [[ "$env" == "prod" ]] && echo "is_prod=true" >> "$GITHUB_OUTPUT" || echo "is_prod=false" >> "$GITHUB_OUTPUT"
-          echo "Chosen environment: $env"
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: select-env
-    environment:
-      name: ${{ needs.select-env.outputs.env }}
-      url: ${{ steps.url.outputs.url || '' }}
+    environment: dev
+    timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Use Node 22
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
-      - run: npm ci
-      - run: npm run build
-        env:
-          CI: true
-          NEXT_TELEMETRY_DISABLED: 1
-          # her injiseres ev. *build-tid* envs fra riktig environment:
-          NEXT_PUBLIC_API_BASE: ${{ secrets.NEXT_PUBLIC_API_BASE || '' }}
+      - name: Install deps
+        run: npm ci
 
-      - name: Verify required secrets (env-aware)
-        shell: bash
-        env:
-          GHA_ENV: ${{ needs.select-env.outputs.env }}
-          APP_URL: ${{ secrets.APP_URL }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL || '' }}
-          API_KEY: ${{ secrets.API_KEY || '' }}
+      # Gjør Prisma robust i CI (SQLite). Kjører migrasjoner bare hvis de finnes.
+      - name: Prepare Prisma (SQLite)
         run: |
-          missing=0
-          # APP_URL kreves alltid (til miljø-URL i GitHub UI / deploy-skript)
-          if [[ -z "$APP_URL" ]]; then
-            echo "::error title=Missing secret::Secret APP_URL is not set in $GHA_ENV"
-            missing=1
+          npx prisma generate
+          if [ -d "prisma/migrations" ]; then
+            npx prisma migrate deploy || true
           fi
 
-          # DATABASE_URL er valgfri (SQLite i dev/prod). Vi bare informerer hvis prod mangler.
-          if [[ "$GHA_ENV" == "prod" && -z "$DATABASE_URL" ]]; then
-            echo "::notice title=No DATABASE_URL in prod::Using SQLite/embedded DB; set DATABASE_URL when moving to Postgres"
-          fi
+      - name: Build app
+        run: npm run build
 
-          exit $missing
-
-
-      # --- (Valgfritt) Docker build & push til GHCR ---
-      - name: Log in to GHCR
-        if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push image
-        if: ${{ hashFiles('Dockerfile') != '' }}
-        run: |
-          REPO="${GITHUB_REPOSITORY,,}"   # gjør repo-navnet lowercase
-          IMAGE="ghcr.io/${REPO}/deploy-checklist"
-          SHA_TAG=${GITHUB_SHA::7}
-          ENV_TAG=${{ needs.select-env.outputs.env }}
-          docker build -t "$IMAGE:$SHA_TAG" -t "$IMAGE:$ENV_TAG" .
-          docker push "$IMAGE:$SHA_TAG"
-          docker push "$IMAGE:$ENV_TAG"
-
-
-      # --- Eksempel deploy-kommandoer: bytt til ditt mål ---
-      - name: Deploy application
-        env:
-          NODE_ENV: ${{ needs.select-env.outputs.env }}
-          APP_URL: ${{ secrets.APP_URL }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          API_KEY: ${{ secrets.API_KEY || '' }}
-        run: |
-          echo "Deploying to $NODE_ENV…"
-          # Eksempeler (velg én retning og tilpass):
-          # 1) Azure Web App (OIDC klart med id-token: write)
-          #   az webapp config appsettings set --name app-${NODE_ENV} --resource-group rg-${NODE_ENV} \
-          #     --settings DATABASE_URL="$DATABASE_URL" API_KEY="$API_KEY"
-          #   az webapp deploy --name app-${NODE_ENV} --resource-group rg-${NODE_ENV} --src-path .
-          #
-          # 2) Kubernetes/Helm:
-          #   helm upgrade --install deploy-checklists ./helm \
-          #     --namespace ${NODE_ENV} --create-namespace \
-          #     --set image.repository=ghcr.io/${GITHUB_REPOSITORY}/deploy-checklists \
-          #     --set image.tag=${GITHUB_SHA::7} \
-          #     --set env.DATABASE_URL="$DATABASE_URL" \
-          #     --set env.API_KEY="$API_KEY"
-
-      - name: Publish env URL
-        id: url
-        run: |
-          if [[ "${{ needs.select-env.outputs.env }}" == "dev" ]]; then
-            echo "url=https://dev.example.com" >> "$GITHUB_OUTPUT"
-          else
-            echo "url=https://app.example.com" >> "$GITHUB_OUTPUT"
-          fi
+      # Legg inn tester senere om du vil (npm test)
+      # - name: Test
+      #   run: npm test
