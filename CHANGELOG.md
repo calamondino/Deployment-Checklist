@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/calamondino/Deployment-Checklist/compare/deploy-checklists-1.0.0...deploy-checklists-1.1.0) (2025-10-10)
+
+
+### Features
+
+* legg til /metrics-endpoint for systemstatus – closes [#13](https://github.com/calamondino/Deployment-Checklist/issues/13) ([bf3ddf5](https://github.com/calamondino/Deployment-Checklist/commit/bf3ddf57bd58851c020035a880fbf1a875b4c40a))
+
+
+### Bug Fixes
+
+* **ci:** force lowercase GHCR repo name ([cbf87ee](https://github.com/calamondino/Deployment-Checklist/commit/cbf87ee35f5a941b55880a880aa97746b469e747))
+* **ci:** force lowercase GHCR repo name ([8fb33e4](https://github.com/calamondino/Deployment-Checklist/commit/8fb33e441ca645d4d0feb70dec153c2d1fcd5bcf))
+* **ci:** lowercase GHCR repo name inside bash ([03faa59](https://github.com/calamondino/Deployment-Checklist/commit/03faa59d3ed26951277e435536e450558f66a25e))
+* **ci:** lowercase GHCR repo name inside bash ([913c0f0](https://github.com/calamondino/Deployment-Checklist/commit/913c0f07a714e54d3e2e57687a2069f7c873d915))
+
 ## [1.0.0](https://github.com/calamondino/Deployment-Checklist/compare/deploy-checklists-0.3.0...deploy-checklists-1.0.0) (2025-09-24)
 
 
