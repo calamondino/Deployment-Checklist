@@ -5,11 +5,11 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Viktig: eksplisitte permissions for trygg kjøring og OIDC senere
+# Viktig: eksplisitte permissions (least privilege).
 permissions:
   contents: read
-  packages: read
-  id-token: write
+  # packages: read    # slå på hvis du henter fra GitHub Packages
+  # id-token: write   # slå på når du faktisk bruker OIDC i denne workflowen
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -19,7 +19,7 @@ jobs:
   build:
     name: Build (dev)
     runs-on: ubuntu-latest
-    environment: dev
+    environment: dev   # fjern denne hvis du ikke har opprettet env "dev" ennå
     timeout-minutes: 15
 
     steps:
@@ -49,3 +49,14 @@ jobs:
       # Legg inn tester senere om du vil (npm test)
       # - name: Test
       #   run: npm test
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: |
+            dist/
+            build/
+            .next/
+            coverage/
+          if-no-files-found: warn
