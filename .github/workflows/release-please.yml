@@ -1,23 +1,18 @@
-name: release-please
-
+name: Release Please
 on:
   push:
-    branches: [main]
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
-  issues: write
 
 jobs:
-  release-please:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - name: Release Please
-        uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v4
         with:
-          # Bruk PAT så Release-PR og merge kan trigge andre workflows
-          token: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
-          # Manifest-modus styres av filene under (ingen "manifest: true")
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          release-type: node
+          package-name: deployment-checklist
